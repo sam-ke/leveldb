@@ -9,6 +9,7 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+
 #include "table/block.h"
 #include "table/filter_block.h"
 #include "table/format.h"
@@ -49,6 +50,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
   if (!s.ok()) return s;
 
   Footer footer;
+  //解析出metadata index 和 datablock index 的偏移量及大小
   s = footer.DecodeFrom(&footer_input);
   if (!s.ok()) return s;
 
@@ -80,6 +82,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
 }
 
 void Table::ReadMeta(const Footer& footer) {
+  //没有设置过滤器的话，不需要解析metadata信息
   if (rep_->options.filter_policy == nullptr) {
     return;  // Do not need any metadata
   }
@@ -211,11 +214,14 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
       &Table::BlockReader, const_cast<Table*>(this), options);
 }
 
+//查询key，并传入回调函数用于接收 key,value
 Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
                           void (*handle_result)(void*, const Slice&,
                                                 const Slice&)) {
   Status s;
   Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+  //找到key所在的datablock偏移量位置
+  //方法位置: table/block.cc
   iiter->Seek(k);
   if (iiter->Valid()) {
     Slice handle_value = iiter->value();

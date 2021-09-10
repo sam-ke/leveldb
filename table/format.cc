@@ -5,6 +5,7 @@
 #include "table/format.h"
 
 #include "leveldb/env.h"
+
 #include "port/port.h"
 #include "table/block.h"
 #include "util/coding.h"
@@ -49,6 +50,7 @@ Status Footer::DecodeFrom(Slice* input) {
     return Status::Corruption("not an sstable (bad magic number)");
   }
 
+  //读取并向后移动input的指针到下一个位置
   Status result = metaindex_handle_.DecodeFrom(input);
   if (result.ok()) {
     result = index_handle_.DecodeFrom(input);
@@ -61,6 +63,7 @@ Status Footer::DecodeFrom(Slice* input) {
   return result;
 }
 
+//不包含block最后的五个字节，1B:压缩标识、4B:crc32校验码
 Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
                  const BlockHandle& handle, BlockContents* result) {
   result->data = Slice();

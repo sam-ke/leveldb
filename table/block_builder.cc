@@ -33,6 +33,7 @@
 
 #include "leveldb/comparator.h"
 #include "leveldb/options.h"
+
 #include "util/coding.h"
 
 namespace leveldb {
@@ -58,6 +59,11 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
           sizeof(uint32_t));                     // Restart array length
 }
 
+//每个block之间（满4KB刷一次盘，称为一个block）和最末端会插入一段restart
+// point位置信息：
+//|....|一些列连续固定4B大小的restart point
+//偏移量...（每隔16个key记录一个restart offset,第一个值为0）|4B: restart_
+//的个数|...|
 Slice BlockBuilder::Finish() {
   // Append restart array
   for (size_t i = 0; i < restarts_.size(); i++) {
@@ -68,6 +74,10 @@ Slice BlockBuilder::Finish() {
   return Slice(buffer_);
 }
 
+// 保存k/v到block中
+// 当前key与其紧邻的上一个key比较,如果key是第一个，则共享长度为0,
+// 每16个key一个压缩周期 一条记录的格式为：
+// ||共享字符前缀长度||key非共享字符长度||value的长度||key非共享字符数据||value数据||
 void BlockBuilder::Add(const Slice& key, const Slice& value) {
   Slice last_key_piece(last_key_);
   assert(!finished_);

@@ -11,12 +11,14 @@
 #include <vector>
 
 #include "leveldb/comparator.h"
+
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/logging.h"
 
 namespace leveldb {
 
+//获取block的 restart points 个数
 inline uint32_t Block::NumRestarts() const {
   assert(size_ >= sizeof(uint32_t));
   return DecodeFixed32(data_ + size_ - sizeof(uint32_t));
@@ -29,6 +31,10 @@ Block::Block(const BlockContents& contents)
   if (size_ < sizeof(uint32_t)) {
     size_ = 0;  // Error marker
   } else {
+    // 由于block所存的数据最后一段是：一些列连续固定4B大小的restart
+    // point，参考block_builder.cc
+    // 所以这里进行size_长度的校验，如果size的长度还不足以容纳restart
+    // point的, 那说明整个文件是无效的!
     size_t max_restarts_allowed = (size_ - sizeof(uint32_t)) / sizeof(uint32_t);
     if (NumRestarts() > max_restarts_allowed) {
       // The size is too small for NumRestarts()
@@ -52,10 +58,14 @@ Block::~Block() {
 //
 // If any errors are detected, returns nullptr.  Otherwise, returns a
 // pointer to the key delta (just past the three decoded values).
+// *p 当前一个段k/v数据的首地址（含 共享、非共享、value长度）
+// *limit restart 字符的起始地址
+// 返回 k/v 数据的首地址 不含上述三者，是非共享key的地址
 static inline const char* DecodeEntry(const char* p, const char* limit,
                                       uint32_t* shared, uint32_t* non_shared,
                                       uint32_t* value_length) {
   if (limit - p < 3) return nullptr;
+  //假定长度是1B大小存储，一种快速检测方式
   *shared = reinterpret_cast<const uint8_t*>(p)[0];
   *non_shared = reinterpret_cast<const uint8_t*>(p)[1];
   *value_length = reinterpret_cast<const uint8_t*>(p)[2];
@@ -85,7 +95,7 @@ class Block::Iter : public Iterator {
   uint32_t current_;
   uint32_t restart_index_;  // Index of restart block in which current_ falls
   std::string key_;
-  Slice value_;
+  Slice value_;  //默认 一个restart 的起始地址，长度为0
   Status status_;
 
   inline int Compare(const Slice& a, const Slice& b) const {
@@ -97,6 +107,7 @@ class Block::Iter : public Iterator {
     return (value_.data() + value_.size()) - data_;
   }
 
+  //获取restart point所指向的数据的偏移量，基准是block起始地址
   uint32_t GetRestartPoint(uint32_t index) {
     assert(index < num_restarts_);
     return DecodeFixed32(data_ + restarts_ + index * sizeof(uint32_t));
@@ -161,6 +172,13 @@ class Block::Iter : public Iterator {
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
+  //二分算法查找key所在位置
+  //找到restart block 中第一个大于等于target的k/v位置，并取出值，赋给key_,
+  // value_
+  //为什么是大于等于？
+  //---大于 主要是为了适配获取index_block 的内容，target就在索引所指向的data
+  // block中，因为index block的key大于任何一个其指向的数据区的key
+  //---等于 适配data block数据获取
   void Seek(const Slice& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target

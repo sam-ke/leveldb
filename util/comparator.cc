@@ -10,6 +10,7 @@
 #include <type_traits>
 
 #include "leveldb/slice.h"
+
 #include "util/logging.h"
 #include "util/no_destructor.h"
 
@@ -28,6 +29,17 @@ class BytewiseComparatorImpl : public Comparator {
     return a.compare(b);
   }
 
+  //获取start中不同于limit的最小子串
+  //寻找start limit 两个字符串的第一个不同的字符
+  //如果：
+  // 1. 两者是其中的一个子串，则不做任何操作
+  // 2. 如果找到第一个不同的字符的位置diff_index，
+  // 则判断该 start[diff_index]+1 < limit[diff_index]
+  //     true: start[diff_index]++, 并且重置start的大小为 diff_index+1
+  //如：
+  //    start  = "helloaaaa";
+  //    limit  = "helloworld";
+  // 最终start = "hellob";
   void FindShortestSeparator(std::string* start,
                              const Slice& limit) const override {
     // Find length of common prefix
@@ -51,6 +63,7 @@ class BytewiseComparatorImpl : public Comparator {
     }
   }
 
+  //用于找到比key大的最短字符串，如传入key=“aaaaa”， 那么最终key="b"
   void FindShortSuccessor(std::string* key) const override {
     // Find first character that can be incremented
     size_t n = key->size();

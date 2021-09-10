@@ -5,6 +5,7 @@
 #include "table/filter_block.h"
 
 #include "leveldb/filter_policy.h"
+
 #include "util/coding.h"
 
 namespace leveldb {
@@ -18,6 +19,10 @@ static const size_t kFilterBase = 1 << kFilterBaseLg;
 FilterBlockBuilder::FilterBlockBuilder(const FilterPolicy* policy)
     : policy_(policy) {}
 
+// block中每固定2KB大小 对应一个filter_offset对象
+//假如：datablock的大小为0 ~ 6KB ----------//==todo（此处是否可以是7KB、7.5KB?
+//可以） 那么， filter_offsets_为[n,n,n] 其中n为 _result的数据长度，即datablock
+// 6kb数据所对应的布隆过滤器数据在filterblock中的偏移量
 void FilterBlockBuilder::StartBlock(uint64_t block_offset) {
   uint64_t filter_index = (block_offset / kFilterBase);
   assert(filter_index >= filter_offsets_.size());
@@ -48,6 +53,7 @@ Slice FilterBlockBuilder::Finish() {
   return Slice(result_);
 }
 
+//一个dabablock 对应一个filter（真正存放布隆bit数据）
 void FilterBlockBuilder::GenerateFilter() {
   const size_t num_keys = start_.size();
   if (num_keys == 0) {
@@ -80,6 +86,14 @@ FilterBlockReader::FilterBlockReader(const FilterPolicy* policy,
   size_t n = contents.size();
   if (n < 5) return;  // 1 byte for base_lg_ and 4 for start of offset array
   base_lg_ = contents[n - 1];
+
+  //一个filterblock的内存结构为
+  //|filter datas|...一系列的4B 偏移量位置|4B: filterdata的总长度|1B:
+  // filterblock的固定大小的指数，默认是11，即2kb|
+  //
+  //一个filter data 的内存结构为: |bits data|1B: k_
+  //每个key所占用的bit位长度，默认是 系数位 *.69|
+  // num_ 为filter_offsets_的长度
   uint32_t last_word = DecodeFixed32(contents.data() + n - 5);
   if (last_word > n - 5) return;
   data_ = contents.data();

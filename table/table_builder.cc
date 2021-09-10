@@ -10,6 +10,7 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+
 #include "table/block_builder.h"
 #include "table/filter_block.h"
 #include "table/format.h"
@@ -95,15 +96,24 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
+  //对比添加的和最近的key大小，保证key的有序递增
   if (r->num_entries > 0) {
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
 
+  //对上一个保存的block
+  //记录一个index_block索引，pending_index_entry初始值为false
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
+    // util/comparator.cc
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
+
+    // index_block里面存储的数据为：
+    //键
+    //r->last_key:当前key的最小子串，*保证子串大于block中的所有key并小于下一个block当中的值，使得两个block的key没有交集*
+    //值 记录block的offset 和size
     r->index_block.Add(r->last_key, Slice(handle_encoding));
     r->pending_index_entry = false;
   }
@@ -117,6 +127,8 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   r->data_block.Add(key, value);
 
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
+  //每当新的block.size > 4KB 时触发一次刷盘操作
+  //为什么是4KB？
   if (estimated_block_size >= r->options.block_size) {
     Flush();
   }
@@ -174,6 +186,9 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   block->Reset();
 }
 
+// block的内存结构为:
+//|data|1字节压缩类型|4字节crc校验码|
+// data的结构为: 
 void TableBuilder::WriteRawBlock(const Slice& block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;

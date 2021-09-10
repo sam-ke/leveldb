@@ -98,6 +98,8 @@ class LEVELDB_EXPORT Iterator {
     void* arg2;
     CleanupNode* next;
   };
+
+  //头插法单向链表
   CleanupNode cleanup_head_;
 };
 
