@@ -17,6 +17,8 @@ Arena::~Arena() {
   }
 }
 
+//申请的内存 > 1KB 则直接单独申请
+// < 1KB 则新申请4KB内存，此时会浪费掉上一个block的剩余空间
 char* Arena::AllocateFallback(size_t bytes) {
   if (bytes > kBlockSize / 4) {
     // Object is more than a quarter of our block size.  Allocate it separately

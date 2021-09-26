@@ -12,12 +12,14 @@
 
 namespace leveldb {
 
+//打包序列号 seq + ktype
 static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);
   assert(t <= kValueTypeForSeek);
   return (seq << 8) | t;
 }
 
+//向result中添加 userKey + 8B(seq ktype)
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   result->append(key.user_key.data(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
@@ -44,6 +46,8 @@ const char* InternalKeyComparator::Name() const {
   return "leveldb.InternalKeyComparator";
 }
 
+// 比较两个internalkey，解析出userKey
+// 当相等时 再倒叙 比较序列号 sequence越大，排序结果越小
 int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   // Order by:
   //    increasing user key (according to user-supplied comparator)
@@ -116,7 +120,9 @@ bool InternalFilterPolicy::KeyMayMatch(const Slice& key, const Slice& f) const {
 
 LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
   size_t usize = user_key.size();
-  size_t needed = usize + 13;  // A conservative estimate
+  // A conservative estimate 5B:varint32;
+  // 8B:序列号，参考memtable.cc MemTable::Add()方法
+  size_t needed = usize + 13;
   char* dst;
   if (needed <= sizeof(space_)) {
     dst = space_;

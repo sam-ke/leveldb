@@ -175,6 +175,7 @@ struct SkipList<Key, Comparator>::Node {
 
  private:
   // Array of length equal to the node height.  next_[0] is lowest level link.
+  // 这里有个细节，初始化Node的next_默认是的长度是1，但在申请内存的时候会根据高度会多申请一些
   std::atomic<Node*> next_[1];
 };
 
@@ -183,6 +184,7 @@ typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::NewNode(
     const Key& key, int height) {
   char* const node_memory = arena_->AllocateAligned(
       sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1));
+  //在已经分配好的内存中构造Node
   return new (node_memory) Node(key);
 }
 
@@ -238,6 +240,7 @@ inline void SkipList<Key, Comparator>::Iterator::SeekToLast() {
   }
 }
 
+//随机一个高度，每一层产生的概率为1/4
 template <typename Key, class Comparator>
 int SkipList<Key, Comparator>::RandomHeight() {
   // Increase height with probability 1 in kBranching
@@ -257,6 +260,11 @@ bool SkipList<Key, Comparator>::KeyIsAfterNode(const Key& key, Node* n) const {
   return (n != nullptr) && (compare_(n->key, key) < 0);
 }
 
+//从高层向下层遍历
+//寻找大于等于key的节点
+// prev 所遍历过的每个层级的节点，包括head节点，
+// prev当中的存的是每层最近小于key的节点
+// 最后一个元素是key的前一个节点
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node*
 SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
@@ -265,10 +273,12 @@ SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
   int level = GetMaxHeight() - 1;
   while (true) {
     Node* next = x->Next(level);
+    // key > next->key 返回true
     if (KeyIsAfterNode(key, next)) {
       // Keep searching in this list
       x = next;
     } else {
+      // key <= next->key
       if (prev != nullptr) prev[level] = x;
       if (level == 0) {
         return next;
@@ -280,6 +290,8 @@ SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
   }
 }
 
+//从最高层开始向下依次寻找最近小于key的节点，也就是获取前一个节点
+//如果未找到则返回_head节点
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node*
 SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
@@ -289,6 +301,7 @@ SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
     assert(x == head_ || compare_(x->key, key) < 0);
     Node* next = x->Next(level);
     if (next == nullptr || compare_(next->key, key) >= 0) {
+      //为空或大于当前key则下沉一层
       if (level == 0) {
         return x;
       } else {
@@ -296,11 +309,14 @@ SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
         level--;
       }
     } else {
+      //小于且不为空则next
       x = next;
     }
   }
 }
 
+//从高层向下层遍历，如果跳表为空则返回_head节点
+//寻找最后一个节点
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::FindLast()
     const {
@@ -345,6 +361,7 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
 
   int height = RandomHeight();
   if (height > GetMaxHeight()) {
+    //高出现高的部分用头节点填充
     for (int i = GetMaxHeight(); i < height; i++) {
       prev[i] = head_;
     }

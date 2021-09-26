@@ -24,6 +24,10 @@ enum RecordType {
 };
 static const int kMaxRecordType = kLastType;
 
+//日志文件分多个block数据块，每个块大小32KB
+// block的内结构为：
+// |4B crc32c 校验码|2B record长度|1B record类型|record 内容|
+// record 内存结构见 db/memtable.cc:87
 static const int kBlockSize = 32768;
 
 // Header is checksum (4 bytes), length (2 bytes), type (1 byte).

@@ -75,7 +75,13 @@ class LEVELDB_EXPORT WriteBatch {
  private:
   friend class WriteBatchInternal;
 
-  std::string rep_;  // See comment in write_batch.cc for the format of rep_
+  //前12B为固定占位
+  // 1 ~ 8 为8B 序列号
+  // 9 ~ 12 为4B k/v对个数， 其中k/v的内存结构如下
+  // |1B ktype|varint32 key长度 + key内容|varint32 value长度 + value 内容|
+  // 如果 ktype是删除则没有 value
+  // See comment in write_batch.cc for the format of rep_
+  std::string rep_;
 };
 
 }  // namespace leveldb

@@ -5,9 +5,9 @@
 #ifndef STORAGE_LEVELDB_DB_LOG_WRITER_H_
 #define STORAGE_LEVELDB_DB_LOG_WRITER_H_
 
+#include "db/log_format.h"
 #include <cstdint>
 
-#include "db/log_format.h"
 #include "leveldb/slice.h"
 #include "leveldb/status.h"
 
@@ -45,6 +45,7 @@ class Writer {
   // crc32c values for all supported record types.  These are
   // pre-computed to reduce the overhead of computing the crc of the
   // record type stored in the header.
+  // 长度是5的一个数组
   uint32_t type_crc_[kMaxRecordType + 1];
 };
 
