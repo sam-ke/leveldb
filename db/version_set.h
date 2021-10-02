@@ -60,7 +60,7 @@ bool SomeFileOverlapsRange(const InternalKeyComparator& icmp,
                            const std::vector<FileMetaData*>& files,
                            const Slice* smallest_user_key,
                            const Slice* largest_user_key);
-
+// versionEdit的集合
 class Version {
  public:
   // Lookup the value for key.  If found, store it in *val and
@@ -331,14 +331,16 @@ class VersionSet {
   WritableFile* descriptor_file_;
   log::Writer* descriptor_log_;
 
-  //虚拟版本
+  //虚拟版本 是version双向链表的头节点
+  // ->next 指向最旧的version
+  // ->prev 指向最新的version 也即当前版本 current_
   // Head of circular doubly-linked list of versions.
   Version dummy_versions_;
   Version* current_;  // == dummy_versions_.prev_
 
   // Per-level key at which the next compaction at that level should start.
   // Either an empty string, or a valid InternalKey.
-  // 存的key 是上一次合并时的最大internalKey
+  // 存的key 是每一层上一次合并时的最大的internalKey
   std::string compact_pointer_[config::kNumLevels];
 };
 

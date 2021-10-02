@@ -223,6 +223,7 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
   }
 }
 
+//删除无用的文件
 void DBImpl::RemoveObsoleteFiles() {
   mutex_.AssertHeld();
 
@@ -271,6 +272,7 @@ void DBImpl::RemoveObsoleteFiles() {
 
       if (!keep) {
         files_to_delete.push_back(std::move(filename));
+        // sstable文件删除要清空cache
         if (type == kTableFile) {
           table_cache_->Evict(number);
         }
@@ -291,6 +293,7 @@ void DBImpl::RemoveObsoleteFiles() {
 }
 
 // 恢复db版本信息
+// save_manifest bool 是否有edit新版需要保存到mainfest中
 Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   mutex_.AssertHeld();
 
@@ -323,6 +326,9 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
     }
   }
 
+  // --todo 当mainfest文件比较大的时候如>=2MB 或 存在恢复wal日志时
+  // 则 save_manifest = true
+  // 表示需要另起一个新文件
   s = versions_->Recover(save_manifest);
   if (!s.ok()) {
     return s;
@@ -384,6 +390,9 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   return Status::OK();
 }
 
+// 恢复日志文件
+// 对那些还没来的及生成sstable的WAL日志文件
+// 进行重建memtable(借助跳表快速实现k/v的排序) 并合并到level0
 Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
                               bool* save_manifest, VersionEdit* edit,
                               SequenceNumber* max_sequence) {
@@ -504,6 +513,9 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   return status;
 }
 
+// memtable内容写入sstable中 并构建tablecache缓存
+// 如果base为空则直接写入level0层
+// 否则会根据条件写入到[0 ~ 2] 层
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
   mutex_.AssertHeld();

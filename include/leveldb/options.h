@@ -71,6 +71,7 @@ struct LEVELDB_EXPORT Options {
   // -------------------
   // Parameters that affect performance
 
+  // level0 文件大小阈值4MB
   // Amount of data to build up in memory (backed by an unsorted log
   // on disk) before converting to a sorted on-disk file.
   //

@@ -87,7 +87,10 @@ class VersionEdit {
 
   // 比较函数的名称
   std::string comparator_;
+  //当前的sstable文件编号
   uint64_t log_number_;
+  //当current版本是最新的时候，该值应该为0
+  // No older logs needed after recovery. 参考dp_impl.cc
   uint64_t prev_log_number_;
   uint64_t next_file_number_;
   SequenceNumber last_sequence_;

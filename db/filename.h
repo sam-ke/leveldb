@@ -20,6 +20,8 @@ namespace leveldb {
 class Env;
 
 enum FileType {
+  // 日志文件
+  // memtable log；
   kLogFile,
   kDBLockFile,
   kTableFile,
@@ -76,6 +78,7 @@ std::string OldInfoLogFileName(const std::string& dbname);
 bool ParseFileName(const std::string& filename, uint64_t* number,
                    FileType* type);
 
+// 把最新mainfest文件名称 "MANIFEST-xxx" 写入 CURRENT 文件中
 // Make the CURRENT file point to the descriptor file with the
 // specified number.
 Status SetCurrentFile(Env* env, const std::string& dbname,

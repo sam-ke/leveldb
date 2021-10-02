@@ -68,6 +68,7 @@ static int64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   return sum;
 }
 
+// 当版本没有再被引用时，则从版本链表中删除
 Version::~Version() {
   assert(refs_ == 0);
 
@@ -581,6 +582,11 @@ std::string Version::DebugString() const {
   return r;
 }
 
+// 把一系列的versionEdit文件打包成一个version
+// 操作顺序
+// NewBuilder() ->
+// Apply(VersionEdit* edit)... ->
+// SaveTo(Version* v) -> VersionSet::AppendVersion(Version* v)
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
@@ -648,6 +654,7 @@ class VersionSet::Builder {
     base_->Unref();
   }
 
+  // 把 versionEdit 更新到versionSet中
   // Apply all of the edits in *edit to the current state.
   void Apply(VersionEdit* edit) {
     // Update compaction pointers
@@ -696,11 +703,13 @@ class VersionSet::Builder {
       f->allowed_seeks = static_cast<int>((f->file_size / 16384U));
       if (f->allowed_seeks < 100) f->allowed_seeks = 100;
 
+      //从待删除集合中删除文件f->number
       levels_[level].deleted_files.erase(f->number);
       levels_[level].added_files->insert(f);
     }
   }
 
+  // versionSet的文件合并到v中
   // Save the current state in *v.
   void SaveTo(Version* v) {
     BySmallestKey cmp;
@@ -792,6 +801,8 @@ VersionSet::~VersionSet() {
   delete descriptor_file_;
 }
 
+// 添加最新版本到双向链表中，尾部插入
+// 虚拟节点 dummy_versions_.prev_ -> v
 void VersionSet::AppendVersion(Version* v) {
   // Make "v" current
   assert(v->refs_ == 0);
@@ -809,6 +820,11 @@ void VersionSet::AppendVersion(Version* v) {
   v->next_->prev_ = v;
 }
 
+// 【新起一个mainfest文件 并让current 指向它】 或
+// 【追加versionEdit到mainfest中】，最后生成一个新的version
+// mainfest中存得是一个个versionEdit 即操作记录
+// version 是一系列 versionEdit的集合
+// versionSet 是一系列 version的集合
 Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= log_number_);
@@ -914,6 +930,7 @@ Status VersionSet::Recover(bool* save_manifest) {
   }
   current.resize(current.size() - 1);
 
+  // mainfest 文件
   std::string dscname = dbname_ + "/" + current;
   SequentialFile* file;
   s = env_->NewSequentialFile(dscname, &file);
@@ -1071,6 +1088,8 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
 // 计算最合适合并的分数及所在层级
 // 0层按个数判断
 // > 0 层按照总字节数
+// v->compaction_level_ = best_level;
+// v->compaction_score_ = best_score;
 void VersionSet::Finalize(Version* v) {
   // Precomputed best level for next compaction
   int best_level = -1;
