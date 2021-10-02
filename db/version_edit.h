@@ -19,6 +19,7 @@ struct FileMetaData {
 
   int refs;
   int allowed_seeks;  // Seeks allowed until compaction
+  // sstable文件编号
   uint64_t number;
   uint64_t file_size;    // File size in bytes
   InternalKey smallest;  // Smallest internal key served by table
@@ -84,6 +85,7 @@ class VersionEdit {
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
+  // 比较函数的名称
   std::string comparator_;
   uint64_t log_number_;
   uint64_t prev_log_number_;
@@ -95,8 +97,16 @@ class VersionEdit {
   bool has_next_file_number_;
   bool has_last_sequence_;
 
+  // 层级与key的对应关系
+  // int:level 层级、 InternalKey: user_key+8B(序列号+kType)
+  // key是该层上一次合并时的最大key
   std::vector<std::pair<int, InternalKey>> compact_pointers_;
+
+  //删除的文件对
   DeletedFileSet deleted_files_;
+
+  // 层级与文件的对应关系
+  // int: level层级
   std::vector<std::pair<int, FileMetaData>> new_files_;
 };
 

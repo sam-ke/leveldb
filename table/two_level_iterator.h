@@ -11,6 +11,9 @@ namespace leveldb {
 
 struct ReadOptions;
 
+// 双层迭代器，index_iter: 迭代key所在sstable即 文件
+// data_iter: 迭代数据，找到真正存储的 value
+// 抽象类，通过block_function回调函数支持多种迭代器，如:tablecache/memtable/sstable
 // Return a new two level iterator.  A two-level iterator contains an
 // index iterator whose values point to a sequence of blocks where
 // each block is itself a sequence of key,value pairs.  The returned

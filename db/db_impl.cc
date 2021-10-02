@@ -290,6 +290,7 @@ void DBImpl::RemoveObsoleteFiles() {
   mutex_.Lock();
 }
 
+// 恢复db版本信息
 Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   mutex_.AssertHeld();
 
@@ -1214,6 +1215,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   }
 
   // May temporarily unlock and wait.
+  // 当新建一个memtable时会触发合并(只是触发，并不是一定会执行sstable合并)
   Status status = MakeRoomForWrite(updates == nullptr);
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;

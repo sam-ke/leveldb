@@ -12,6 +12,7 @@
 
 #include "leveldb/slice.h"
 #include "leveldb/status.h"
+
 #include "port/port.h"
 
 namespace leveldb {
@@ -22,7 +23,9 @@ enum FileType {
   kLogFile,
   kDBLockFile,
   kTableFile,
+  // mainfest 文件类型
   kDescriptorFile,
+  // current 文件类型
   kCurrentFile,
   kTempFile,
   kInfoLogFile  // Either the current one, or an old one
