@@ -1,4 +1,7 @@
-**LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.**
+**本人通读了一遍leveldb的源码,并对关键逻辑增加了详细的注释，便于进一步理解和记忆.**
+
+LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.
+
 sam
 
 [![ci](https://github.com/google/leveldb/actions/workflows/build.yml/badge.svg)](https://github.com/google/leveldb/actions/workflows/build.yml)
