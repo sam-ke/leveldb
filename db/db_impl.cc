@@ -80,6 +80,7 @@ struct DBImpl::CompactionState {
   std::vector<Output> outputs;
 
   // State kept for output being generated
+  // 当前正在使用sstable 文件操作对象
   WritableFile* outfile;
   TableBuilder* builder;
 
@@ -292,8 +293,14 @@ void DBImpl::RemoveObsoleteFiles() {
   mutex_.Lock();
 }
 
-// 恢复db版本信息
+// 恢复db版本信息，期间发生任何错误就终止
 // save_manifest bool 是否有edit新版需要保存到mainfest中
+// 恢复的步骤
+// 1. 初次启动，创建mainfest， 添加versionEdit , 创建current 指向 mainfest
+// 2. 读取current, 解析mainfest文件, 合并所有versionEdit成一个version
+// 添加到versionSet链表汇中
+// 3. 扫描db目录下的所有*.log wal文件, 重建临时 memtalbe并写入level0
+// 4. 更新version的最大 序列号
 Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   mutex_.AssertHeld();
 
@@ -713,6 +720,13 @@ void DBImpl::BackgroundCall() {
   background_work_finished_signal_.SignalAll();
 }
 
+// 后台线程合并, 步骤如下
+// 1. immtable不为空 则直接写入level0 返回
+// 2. 生成合并计划,两种方式:
+//    a. 指定 层级、key范围
+//    b. 自动挑选合适的层级 PickCompaction()
+// 3. 判断是否可以直接把sstable 移动到指定层
+// 4. 不能直接移动,进行复杂合并DoCompactionWork()
 void DBImpl::BackgroundCompaction() {
   mutex_.AssertHeld();
 
@@ -811,6 +825,7 @@ void DBImpl::CleanupCompaction(CompactionState* compact) {
   delete compact;
 }
 
+//新建一个sstable文件, 同时生成一个TableBuilder对象用于写入k/v
 Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   assert(compact != nullptr);
   assert(compact->builder == nullptr);
@@ -836,6 +851,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   return s;
 }
 
+//结束一个sstable文件的写入
 Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
                                           Iterator* input) {
   assert(compact != nullptr);
@@ -885,6 +901,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   return s;
 }
 
+// 生成新version版本
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
   Log(options_.info_log, "Compacted %d@%d + %d@%d files => %lld bytes",
@@ -893,16 +910,30 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       static_cast<long long>(compact->total_bytes));
 
   // Add compaction outputs
+  // 删除所有待归并集合的文件（只是标记为可删除）
+  // 疑问: 这里为什么是全部删除呢？
+  //      因为可能由于归并文件过大导致提前终止,会不会误删除?
+  // 答案: 不会。 在VersionSet::Builder::Apply()方法中
+  // 写日志之前会和new_files集合取交集
   compact->compaction->AddInputDeletions(compact->compaction->edit());
   const int level = compact->compaction->level();
+
+  // 归并后的文件写入level+1层
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     const CompactionState::Output& out = compact->outputs[i];
     compact->compaction->edit()->AddFile(level + 1, out.number, out.file_size,
                                          out.smallest, out.largest);
   }
+
+  // 记录一个新version版本
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
 }
 
+// 复杂合并
+// 1. 构造多路归并迭代器，从小到大遍历key, 逐个进行sstable写入
+// 当遇到一个key的多版本时丢弃低版本的
+// 2. 当sstable大于2MB时 重新生成一个文件
+// 3. 追加一个新的version版本
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
@@ -929,6 +960,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   input->SeekToFirst();
   Status status;
   ParsedInternalKey ikey;
+
   std::string current_user_key;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
@@ -959,6 +991,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     bool drop = false;
     if (!ParseInternalKey(key, &ikey)) {
       // Do not hide error keys
+      // 即使key解析失败也依然写入sstable中
       current_user_key.clear();
       has_current_user_key = false;
       last_sequence_for_key = kMaxSequenceNumber;
@@ -967,6 +1000,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) !=
               0) {
         // First occurrence of this user key
+        // 相同user key可能会有多个，seq越大表示越新，顺序越靠前
+        // 第一次碰到该user_key，标记has_current_user_key为true, sequence为max值
         current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());
         has_current_user_key = true;
         last_sequence_for_key = kMaxSequenceNumber;
@@ -978,6 +1013,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
                  compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+        //由于多次Put/Delete，有些key会出现多次
+        //有几种情况可以忽略key，在compact时丢弃：
+        // 1. 对于多次出现的user key，我们只关心最后写入的值 or >snapshot的值
+        //   通过设置last_sequence_for_key = kMaxSequenceNumber
+        //   以及跟compact->smallest_snapshot比较，可以分别保证这两点
+        // 2. 如果是删除key && <= snapshot && 更高层没有该key，那么也可以忽略
         // For this user key:
         // (1) there is no data in higher levels
         // (2) data in lower levels will have larger sequence numbers
@@ -1126,6 +1167,14 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   return versions_->MaxNextLevelOverlappingBytes();
 }
 
+// 获取一个key的值
+// 1. 锁定最新的版本号
+// 2. 添加对memtable、immutable、currentVersion的引用
+// 3. 构造lookupKey
+// 4. memtable中查找, 找到则跳到步骤7
+// 5. immutalbe中查找, 找到则跳到步骤7
+// 6. version中二分查找sstable
+// 7. 触发合并。取消资源的引用
 Status DBImpl::Get(const ReadOptions& options, const Slice& key,
                    std::string* value) {
   Status s;
@@ -1219,7 +1268,14 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   MutexLock l(&mutex_);
   writers_.push_back(&w);
+  /**
+   * w.done: 表示是否完成
+   * writers_.front: 表示当前write是否是最前面的writer
+   *
+   * 如果未完成并且当前写入不是最久未完成的write，就进行等待;
+   */
   while (!w.done && &w != writers_.front()) {
+    // 释放锁并等待被唤醒
     w.cv.Wait();
   }
   if (w.done) {

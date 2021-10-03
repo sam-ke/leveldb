@@ -79,6 +79,15 @@ class Version {
   void AddIterators(const ReadOptions&, std::vector<Iterator*>* iters);
 
   //获取key的值
+  // 遍历所有层的文件从0层开始向下
+  // 1.第0层由于文件可能存在重叠key所有对文件的编号进行倒叙排序,然后找出第一个key为止
+  // 2. 第 >=1 层,不存在文件重叠key的情况,所以二分法查找key所在的文件
+  //    然后,找到第一个key为止
+  // 问: 为什么找到第一个为止呢?
+  // 因为sstable中的k/v是从memtable合并过来的,而memtable中的key的排序规则为:
+  // 【不同user_key按照顺序、相同user_key则 序列号(sequence number)倒叙】
+  // 生成sstable时, leveldb是直接遍历memtable数据得来,所以排序是一致的
+  // 因此,相同user_key 第一个就是最新的
   Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
              GetStats* stats);
 
@@ -265,6 +274,9 @@ class VersionSet {
   // file at a level >= 1.
   int64_t MaxNextLevelOverlappingBytes();
 
+  // 这里生成一个MergingIterator，相当于在遍历要合并的sst文件时，同时进行多路归并排序
+  // MergingIterator内部维护了n个Iterator，每个Iterator指向一个sst，进行迭代时，MergingIterator
+  // 会找所有Iterators所指key中的最小那个，这样就完成了多路归并排序
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.
   Iterator* MakeInputIterator(Compaction* c);
@@ -364,6 +376,7 @@ class Compaction {
   FileMetaData* input(int which, int i) const { return inputs_[which][i]; }
 
   // Maximum size of files to build during this compaction.
+  // 单个sstable文件大小阈值为2MB
   uint64_t MaxOutputFileSize() const { return max_output_file_size_; }
 
   // 判断是否可以直接移动到level+1层。 只有level层文单独一个文件

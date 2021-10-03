@@ -911,6 +911,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 }
 
 // 从current文件中恢复版本控制对象
+// 读取所有versionEdit 打包成一个version对象 append到versionSet的环形链表中
 Status VersionSet::Recover(bool* save_manifest) {
   struct LogReporter : public log::Reader::Reporter {
     Status* status;
@@ -1086,8 +1087,8 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
 }
 
 // 计算最合适合并的分数及所在层级
-// 0层按个数判断
-// > 0 层按照总字节数
+// 0层按个数判断(>=4个)
+// > 0 层按照总字节数(1层10MB, 2层100MB, 3层1GB,4层10GB,5层100GB,6层1TB)
 // v->compaction_level_ = best_level;
 // v->compaction_score_ = best_score;
 void VersionSet::Finalize(Version* v) {

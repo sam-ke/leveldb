@@ -179,6 +179,7 @@ class DBImpl : public DB {
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
   WritableFile* logfile_;
+  //当前正在使用的wal日志文件编号
   uint64_t logfile_number_ GUARDED_BY(mutex_);
   log::Writer* log_;
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
@@ -189,7 +190,8 @@ class DBImpl : public DB {
 
   SnapshotList snapshots_ GUARDED_BY(mutex_);
 
-  // 等待合并的memtable集合
+  // 等待合并的文件编号集合
+  // 完成合并写入sstalbe之后会从中剔除
   // Set of table files to protect from deletion because they are
   // part of ongoing compactions.
   std::set<uint64_t> pending_outputs_ GUARDED_BY(mutex_);

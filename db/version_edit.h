@@ -71,6 +71,7 @@ class VersionEdit {
   }
 
   // Delete the specified "file" from the specified "level".
+  // 合并后的sstable文件 写入到deleted_files_ 集合中
   void RemoveFile(int level, uint64_t file) {
     deleted_files_.insert(std::make_pair(level, file));
   }

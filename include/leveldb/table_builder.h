@@ -46,6 +46,7 @@ class LEVELDB_EXPORT TableBuilder {
   // without changing any fields.
   Status ChangeOptions(const Options& options);
 
+  // key 为internalKey 
   // Add key,value to the table being constructed.
   // REQUIRES: key is after any previously added key according to comparator.
   // REQUIRES: Finish(), Abandon() have not been called
