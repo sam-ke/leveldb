@@ -1,4 +1,3 @@
-**本人通读了一遍leveldb的源码,并对关键逻辑增加了详细的注释，便于进一步理解和记忆.**
 
 LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.
 
